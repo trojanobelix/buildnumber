@@ -21,24 +21,26 @@ static const char USAGE[2][1000] =
 Increments the version and build number in a c-header file or creates the c-Header file if it does not exist.
 
     Usage:
-      Buildnumber <file> [max]
+      Buildnumber [<path>] <file> [max]
       Buildnumber (-h | -? | /h | /? )
-
-
 
     Options:
       -h -? /h /?   Show this screen.
-      max           OPTIONAL: Maximum buildnumber. MINOR and MINOR are incremented if build number is greater than max. 
+      path          OPTIONAL: path in which the header is to be changed or created. This is required, for example, if the MPLABX macro ${ProjectDir} (or $(ProjectDir) for VS/GCC) is used to determine the project directory.
+      max           OPTIONAL: Maximum build number. MINOR and MINOR are incremented if build number is greater than max. If max = 0 MAJOR, MINOR and BUILD are reseted to 0.0.000. 
       file          file name of the header file to be modified or created. Default file name is)"},
 {R"(
 
+    Example:
+      c:\microchip\buildnumber.exe ${ProjectDir} ".\buildnumber.h" 99   // Modifies or creates buildnumber.h in the MPLABX project directory with maximum 99 as build number. If greater MINOR version is incremented.
+
     Format of the header file:
-        #define BUILDNUMBER BBB                     // Build number as Integer
-        #define BUILDNUMBER_STR "BBB"               // Build number as String
-        #define VER_MAJOR MAJOR                     // Major version number as Integer
-        #define VER_MINOR MINOR                     // Minor version number as Integer
-        #define VERSION_STR "MAJOR.MINOR.BBB"       // Version number as String
-        #define BUILDDATE_STR "YYYY-MM-DD hh:mm:ss" // Creation Date as String 
+      #define BUILDNUMBER BBB                     // Build number as Integer
+      #define BUILDNUMBER_STR "BBB"               // Build number as String
+      #define VER_MAJOR MAJOR                     // Major version number as Integer
+      #define VER_MINOR MINOR                     // Minor version number as Integer
+      #define VERSION_STR "MAJOR.MINOR.BBB"       // Version number as String
+      #define BUILDDATE_STR "YYYY-MM-DD hh:mm:ss" // Creation Date as String 
     )"} };
 
 
