@@ -1,4 +1,4 @@
-#define VERSION "V2.1"
+#define VERSION "V2.2"
 #define DEFAULTFILENAME "buildNumber.h" 
 
 #define ERR_MAXVER      -4
@@ -50,6 +50,7 @@ int main(int argc, char* argv[]) {
     int maxBuildnumber = 999;
     int lenght_maxBuildnumber = 3;
     bool resetVersion = false;
+    bool MaxVersion = false;
     //Get filename if it's passed
     if (argc > 1) {
         if (!strcmp(argv[1], "/?") || !strcmp(argv[1], "/h") || !strcmp(argv[1], "-?") || !strcmp(argv[1], "-h")) {
@@ -67,6 +68,7 @@ int main(int argc, char* argv[]) {
 
         if (!strcmp(argv[argc - 1], "0")) {
          resetVersion = true;
+         MaxVersion = true;
          printf("Reset version number\n");
         }
         else if (!strcmp(argv[argc - 1], "/?") || !strcmp(argv[argc - 1], "/h") || !strcmp(argv[argc - 1], "-?") || !strcmp(argv[argc - 1], "-h")) {
@@ -77,18 +79,27 @@ int main(int argc, char* argv[]) {
 
             maxBuildnumber = atoi(argv[argc - 1]);
 
-            if (maxBuildnumber >= 0 && !errno && maxBuildnumber <= INT_MAX)
+            if (maxBuildnumber > 0 && !errno && maxBuildnumber <= INT_MAX)
             {
+                MaxVersion = true;
                 lenght_maxBuildnumber = strlen(argv[argc - 1]);
                 //printf("All parameters must be a positive integers. Could not convert % s", argv[argc - 1]);
                 //return ERR_PARSE;
 
             }
-
-            if (argc == 3)  {
-                 strcpy_s(fileName, FILENAME_MAX, argv[1]);
+            else {
+                MaxVersion = false; // last parmeter is not a number
+                maxBuildnumber = 999;
             }
-            else if (argc == 4)  {
+
+            int offset = MaxVersion ? 1 : 0;
+            
+             if (argc == 3)  { 
+                 strcpy_s(fileName, FILENAME_MAX, argv[2-offset]);
+                 if(!MaxVersion)
+                    strcat_s(filePath, FILENAME_MAX, argv[1-offset]);
+            }
+            else if (argc == 4 && MaxVersion)  {
                 strcpy_s(fileName, FILENAME_MAX, argv[2]);
                 strcat_s(filePath, FILENAME_MAX, argv[1]);
             }
@@ -183,7 +194,12 @@ int main(int argc, char* argv[]) {
         }
 
         fclose(fBuildNumber);
-    }    else printf("File % s not found. Try to create a new file.\n", fileName);
+    }
+    else {
+        printf("File % s not found. Try to create a new file.\n", fileName);
+        resetVersion = true;
+    }
+
 
 
     //Increment build number
@@ -214,6 +230,7 @@ int main(int argc, char* argv[]) {
     fBuildNumber = fopen(filePath, "w");
     if (fBuildNumber != NULL) {
 
+
         time_t t;
         t = time(NULL);
         struct tm tm;
@@ -242,7 +259,7 @@ int main(int argc, char* argv[]) {
     }
     else {
         //Error in file creation.
-        printf("Could not create file\n");
+        printf("Could not create file %s\n", filePath);
         return ERR_FOPEN;
     }
 }

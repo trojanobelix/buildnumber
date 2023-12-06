@@ -6,8 +6,8 @@
 #define BUILDNUMBER 0						// Build number as Integer
 #define BUILDNUMBER_STR "000"				// Build number as String
 #define VER_MAJOR 0							// Major version number as Integer
-#define VER_MINOR 2							// Minor version number as Integer
-#define VERSION_STR "0.02.000"				// Version number as String
-#define BUILDDATE_STR "2023-11-24 08:22:16"	// Creation Date as String
+#define VER_MINOR 5							// Minor version number as Integer
+#define VERSION_STR "0.05.000"				// Version number as String
+#define BUILDDATE_STR "2023-12-06 12:57:56"	// Creation Date as String
 
 #endif
