@@ -245,7 +245,9 @@ int main(int argc, char* argv[]) {
         fprintf(fBuildNumber, "#define BUILDNUMBER_STR \"%0*d\"\t\t\t\t// Build number as String\n", lenght_maxBuildnumber, build);
         fprintf(fBuildNumber, "#define VER_MAJOR %u\t\t\t\t\t\t\t// Major version number as Integer\n", major);
         fprintf(fBuildNumber, "#define VER_MINOR %u\t\t\t\t\t\t\t// Minor version number as Integer\n", minor);
-        fprintf(fBuildNumber, "#define VERSION_STR \"%u.%02u.%0*u\"\t\t\t\t// Version number as String\n", major, minor, lenght_maxBuildnumber, build);
+        fprintf(fBuildNumber, "#define MAJORMINOR_STR  \"%0*d%0*d\"\t\t\t\t// MajorMinor number as String\n", lenght_maxBuildnumber,major, lenght_maxBuildnumber, minor);
+        fprintf(fBuildNumber, "#define MAJORMINOR %u%u\t\t\t\t\t\t\t// MajorMinor version number as Integer\n", major, minor);
+        fprintf(fBuildNumber, "#define VERSION_STR \"%u.%02u.%0*u\"\t\t\t\t// Version number as String\n", major, minor, lenght_maxBuildnumber, lenght_maxBuildnumber, build);
         fprintf(fBuildNumber, "#define BUILDDATE_STR \"%d-%02d-%02d %02d:%02d:%02d\"\t// Creation Date as String\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
         fprintf(fBuildNumber, "\n");
         fprintf(fBuildNumber, "#endif\n");
