@@ -1,4 +1,4 @@
-#define VERSION "V2.2"
+#define VERSION "V2.3"
 #define DEFAULTFILENAME "buildNumber.h" 
 
 #define ERR_MAXVER      -4
@@ -27,7 +27,7 @@ Increments the version and build number in a c-header file or creates the c-Head
     Options:
       -h -? /h /?   Show this screen.
       path          OPTIONAL: path in which the header is to be changed or created. This is required, for example, if the MPLABX macro ${ProjectDir} (or $(ProjectDir) for VS/GCC) is used to determine the project directory.
-      max           OPTIONAL: Maximum build number. MINOR and MINOR are incremented if build number is greater than max. If max = 0 MAJOR, MINOR and BUILD are reseted to 0.0.000. 
+      max           OPTIONAL: Maximum build number. Default 999. MINOR and MINOR are incremented if build number is greater than max. If max = 0 MAJOR, MINOR and BUILD are reseted to 0.0.000. 
       file          file name of the header file to be modified or created. Default file name is)"},
 {R"(
 
@@ -35,9 +35,9 @@ Increments the version and build number in a c-header file or creates the c-Head
       c:\microchip\buildnumber.exe ${ProjectDir} ".\buildnumber.h" 99   // Modifies or creates buildnumber.h in the MPLABX project directory with maximum 99 as build number. If greater MINOR version is incremented.
 
     Format of the header file:
-      #define BUILDNUMBER BBB                     // Build number as Integer
-      #define BUILDNUMBER_STR "BBB"               // Build number as String
-      #define VER_MAJOR MAJOR                     // Major version number as Integer
+      #define BUILDNUMBER BBB                     // Build number as Integer (0...max, max default = 999)
+      #define BUILDNUMBER_STR "BBB"               // Build number as String (with leading "0" up to the string length of the parameter "max")
+      #define VER_MAJOR MAJOR                     // Major version number as Integer (0...99)
       #define VER_MINOR MINOR                     // Minor version number as Integer
       #define VERSION_STR "MAJOR.MINOR.BBB"       // Version number as String
       #define BUILDDATE_STR "YYYY-MM-DD hh:mm:ss" // Creation Date as String 
@@ -90,6 +90,7 @@ int main(int argc, char* argv[]) {
             else {
                 MaxVersion = false; // last parmeter is not a number
                 maxBuildnumber = 999;
+                lenght_maxBuildnumber = 3;
             }
 
             int offset = MaxVersion ? 1 : 0;
@@ -244,10 +245,10 @@ int main(int argc, char* argv[]) {
         fprintf(fBuildNumber, "#define BUILDNUMBER %d\t\t\t\t\t\t// Build number as Integer\n", build);
         fprintf(fBuildNumber, "#define BUILDNUMBER_STR \"%0*d\"\t\t\t\t// Build number as String\n", lenght_maxBuildnumber, build);
         fprintf(fBuildNumber, "#define VER_MAJOR %u\t\t\t\t\t\t\t// Major version number as Integer\n", major);
-        fprintf(fBuildNumber, "#define VER_MINOR %u\t\t\t\t\t\t\t// Minor version number as Integer\n", minor);
-        fprintf(fBuildNumber, "#define MAJORMINOR_STR  \"%0*d%0*d\"\t\t\t\t// MajorMinor number as String\n", lenght_maxBuildnumber,major, lenght_maxBuildnumber, minor);
-        fprintf(fBuildNumber, "#define MAJORMINOR %u%u\t\t\t\t\t\t\t// MajorMinor version number as Integer\n", major, minor);
-        fprintf(fBuildNumber, "#define VERSION_STR \"%u.%02u.%0*u\"\t\t\t\t// Version number as String\n", major, minor, lenght_maxBuildnumber, lenght_maxBuildnumber, build);
+        fprintf(fBuildNumber, "#define VER_MINOR %02u\t\t\t\t\t\t// Minor version number as Integer\n", minor);
+        fprintf(fBuildNumber, "#define MAJORMINOR_STR  \"%d%02d\"\t\t\t\t// MajorMinor number as String\n", major, minor);
+        fprintf(fBuildNumber, "#define MAJORMINOR %u%02u\t\t\t\t\t\t// MajorMinor version number as Integer\n", major, minor);
+        fprintf(fBuildNumber, "#define VERSION_STR \"%u.%02u.%0*u\"\t\t\t\t// Version number as String\n", major, minor, lenght_maxBuildnumber, build);
         fprintf(fBuildNumber, "#define BUILDDATE_STR \"%d-%02d-%02d %02d:%02d:%02d\"\t// Creation Date as String\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
         fprintf(fBuildNumber, "\n");
         fprintf(fBuildNumber, "#endif\n");
