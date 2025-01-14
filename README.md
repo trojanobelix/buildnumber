@@ -38,7 +38,7 @@ The #defines VERSION_MAJOR, and VERSION_MINOR are assigned manually in this exam
 sprintf(&display[16], "V%.1u.%.2u.%.3u (MAIN)", VERSION_MAJOR, VERSION_MINOR, BUILDNUMBER); // View Version and Buildnumber Eg: V1.01.1233
 ```
 ## Usage
-Increments the version and build number in a c-header file, or creates the c-header file if it does not exist.
+Increments the version and build number in a c-header file, or creates the header file if it does not exist.
 
 **Usage:**
 Buildnumber [\<path\>] \<file\> \[max\].
