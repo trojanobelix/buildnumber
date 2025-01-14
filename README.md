@@ -1,4 +1,5 @@
-# Version string with individual build number
+# Buildnumber
+Version string with individual build number
 ## Description
 
 To uniquely identify a code loaded on a controller, an individual build number can be used, which changes automatically with each successful compilation run.
@@ -24,15 +25,26 @@ The tool should be called in the post-compile process. This ensures that each ge
 ```
 The header file defines the build number as a number (BUILDNUMBER) and as a string (BUILDNUMBER_STR)
 
-sprintf(&display[16], "V%.1u.%.2u.%.3u (MAIN)", VERSION_MAJOR, VERSION_MINOR, BUILDNUMBER); // Fill CANopen manufacturerSoftwareVersion object Ex: V1.01.1233
+The #defines VERSION_MAJOR, and VERSION_MINOR are assigned manually in this example
+
+
+/// Version information MAIN, buildnumber comes froum buildnumber.h
+```
+#define VERSION_MAJOR 1 // 0...63
+#define VERSION_MINOR 1 // 0...127
+
+(...)
+
+sprintf(&display[16], "V%.1u.%.2u.%.3u (MAIN)", VERSION_MAJOR, VERSION_MINOR, BUILDNUMBER); // View Version and Buildnumber Eg: V1.01.1233
+```
 ## Usage
 Increments the version and build number in a c-header file, or creates the c-header file if it does not exist.
 
-Usage:
+**Usage:**
 Buildnumber [\<path\>] \<file\> \[max\].
 Buildnumber (\-h | \-? | \/h | \/? )
 
-Options:
+**Options:**
 \-h \-? \/h \/?          Display this screen.
 
 path OPTIONAL            Path in which to change or create the header. This is required e.g. when using the MPLABX macro \$ \{ProjectDir\} (or \$(ProjectDir) for VS/GCC) to determine                              the project directory.
@@ -41,7 +53,7 @@ file                     The name of the header file to be modified or created. 
 
 max OPTIONAL:            Maximum build number. MINOR and MINOR are incremented if the build number is greater than max. If max = 0, MAJOR, MINOR and BUIL are reset to 0.0.000.
 
-## Example:
+**Example:**
 c:\microchip\buildnumber.exe ${ProjectDir} ".\buildnumber.h" 99 // Modifies or creates buildnumber.h in the MPLABX project directory with a maximum build number of 99. If greater, the MINOR version is incremented.
 
 ## Return values
