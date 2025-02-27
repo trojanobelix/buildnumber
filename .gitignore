@@ -1,4 +1,5 @@
-/Release
 /.vs
-/Debug
+Debug
+/Release
 /*.user
+Release
