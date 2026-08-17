@@ -1,5 +1,5 @@
-#define VERSION "V2.5"
-#define DEFAULTFILENAME "buildNumber.h"
+#define VERSION "V3.0"
+#define DEFAULTFILENAME "buildnumber.h"
 
 #define ERR_MAXVER      -4
 #define ERR_PARSE       -3
@@ -14,33 +14,197 @@
 #include <stdlib.h>
 #include <errno.h>
 
-static const char USAGE[2][1000] =
+static const char USAGE[2][1300] =
 { {R"(
-Increments the version and build number in a c-header file or creates the c-Header file if it does not exist.
+BuildNumber %s
+
+Automatically increments version and build numbers in a C header file.
+If the file does not exist, it will be created.
 
 Usage:
-  Buildnumber [<path>] <file> [max]
-  Buildnumber (-h | -? | /h | /? )
+  BuildNumber [path] [file]
+
+VERSION_FORMAT determines:
+  - field formatting
+  - maximum build number
+  - maximum minor version
+  - maximum major version
+
+Parameters:
+  path       Optional target directory.
+  file       Header file name. Default: %s
+
+Version Patterns:
+VER_MAJOR, VER_MINOR and BUILDNUMBER contain the
+current numeric version values.
+
+VERSION_FORMAT defines how VERSION_STR and
+BUILDNUMBER_STR are generated.
+
+  Digits define the minimum number of numeric positions and printed as leading zeros, if necessary.
+  Digits plus '_' define the maximum number of numeric positions.
+  e.g ___1, for example, defines a maximum of 4 digits, but a minimum of 1 digit.
+      0001, for example, defines a maximum of 4 digits and a minimum of 4 digits, printed with leading zeros.
+
+Version Rollover:
+When BUILDNUMBER exceeds the maximum value
+defined by the BUILD field in VERSION_FORMAT,
+VER_MINOR is incremented.
 )"},
 {R"(
-Example:
-  Buildnumber . buildnumber.h 99
-)"} };
 
+Examples:
+VER_MAJOR      0
+VER_MINOR      1
+BUILDNUMBER    1
+
+VERSION_FORMAT "_0.01.001"
+
+Generated VERSION_STR:
+  0.01.001
+
+Pattern Limits:
+  _0    -> range 0..99
+  01    -> range 01..99
+  001   -> range 001..999
+  00_1  -> range 001..9999
+
+)"}};
+
+void FormatValue(
+    char* buffer,
+    size_t size,
+    unsigned int value,
+    const char* pattern)
+{
+    int minDigits = 0;
+
+    for (int i = 0; pattern[i]; i++)
+    {
+        if (pattern[i] != '_')
+            minDigits++;
+    }
+
+    int maxDigits = (int)strlen(pattern);
+
+    char tmp[32];
+
+    sprintf_s(
+        tmp,
+        sizeof(tmp),
+        "%0*u",
+        minDigits,
+        value);
+
+    if ((int)strlen(tmp) > maxDigits)
+    {
+        strcpy_s(buffer, size, "#OVERFLOW");
+        return;
+    }
+
+    strcpy_s(buffer, size, tmp);
+}
+
+void BuildVersionString(
+    char* versionString,
+    size_t versionStringSize,
+    unsigned int major,
+    unsigned int minor,
+    unsigned int build,
+    const char* versionFormat)
+{
+    char formatCopy[64];
+    strcpy_s(formatCopy, versionFormat);
+
+    char* majorFmt = strtok(formatCopy, ".");
+    char* minorFmt = strtok(NULL, ".");
+    char* buildFmt = strtok(NULL, ".");
+
+    if (!majorFmt || !minorFmt || !buildFmt)
+    {
+        strcpy_s(versionString,
+            versionStringSize,
+            "#INVALID_FORMAT");
+
+        return;
+    }
+
+    char majorStr[32];
+    char minorStr[32];
+    char buildStr[32];
+
+    FormatValue(
+        majorStr,
+        sizeof(majorStr),
+        major,
+        majorFmt);
+
+    FormatValue(
+        minorStr,
+        sizeof(minorStr),
+        minor,
+        minorFmt);
+
+    FormatValue(
+        buildStr,
+        sizeof(buildStr),
+        build,
+        buildFmt);
+
+    sprintf_s(
+        versionString,
+        versionStringSize,
+        "%s.%s.%s",
+        majorStr,
+        minorStr,
+        buildStr);
+}
+
+unsigned int GetPatternMaxValuePart(const char* pattern)
+{
+    unsigned int maxValue = 0;
+
+    for (size_t i = 0; i < strlen(pattern); i++)
+    {
+        maxValue = maxValue * 10 + 9;
+    }
+
+    return maxValue;
+}
+
+bool GetFormatParts(
+    const char* versionFormat,
+    char* majorFmt,
+    size_t majorFmtSize,
+    char* minorFmt,
+    size_t minorFmtSize,
+    char* buildFmt,
+    size_t buildFmtSize)
+{
+    char tmp[64];
+
+    strcpy_s(tmp, sizeof(tmp), versionFormat);
+
+    char* pMajor = strtok(tmp, ".");
+    char* pMinor = strtok(NULL, ".");
+    char* pBuild = strtok(NULL, ".");
+
+    if (!pMajor || !pMinor || !pBuild)
+        return false;
+
+    strcpy_s(majorFmt, majorFmtSize, pMajor);
+    strcpy_s(minorFmt, minorFmtSize, pMinor);
+    strcpy_s(buildFmt, buildFmtSize, pBuild);
+
+    return true;
+}
 int main(int argc, char* argv[])
 {
     char fileName[FILENAME_MAX] = DEFAULTFILENAME;
     char filePath[FILENAME_MAX] = "";
 
-    int maxBuildnumber = 999;
-    int lenght_maxBuildnumber = 3;
-
     bool resetVersion = false;
-    bool MaxVersion = false;
-    
-    int majorWidth = 1;
-    int minorWidth = 1;
-    
+
     /* Help */
 
     if (argc > 1)
@@ -50,11 +214,12 @@ int main(int argc, char* argv[])
             !strcmp(argv[1], "-?") ||
             !strcmp(argv[1], "-h"))
         {
-            printf("buildnumber %s\n%s %s %s",
-                VERSION,
+            printf(
                 USAGE[0],
-                DEFAULTFILENAME,
-                USAGE[1]);
+                VERSION,
+                DEFAULTFILENAME);
+
+            printf("%s", USAGE[1]);
 
             return ERR_NONE;
         }
@@ -67,23 +232,8 @@ int main(int argc, char* argv[])
         if (!strcmp(argv[argc - 1], "0"))
         {
             resetVersion = true;
-            MaxVersion = true;
             printf("Reset version number\n");
         }
-        else
-        {
-            char* endptr = nullptr;
-            long v = strtol(argv[argc - 1], &endptr, 10);
-
-            if (*endptr == '\0' && v > 0)
-            {
-                MaxVersion = true;
-                maxBuildnumber = (int)v;
-                lenght_maxBuildnumber = (int)strlen(argv[argc - 1]);
-            }
-        }
-
-        int offset = MaxVersion ? 1 : 0;
 
         if (argc == 2)
         {
@@ -93,11 +243,11 @@ int main(int argc, char* argv[])
         }
         else if (argc == 3)
         {
-            /* Buildnumber.exe path file
+            /* BuildNumber path file
                oder
-               Buildnumber.exe file max */
+               BuildNumber file 0 */
 
-            if (MaxVersion)
+            if (resetVersion)
             {
                 strcpy_s(fileName, sizeof(fileName), argv[1]);
             }
@@ -117,9 +267,15 @@ int main(int argc, char* argv[])
                 strcpy_s(fileName, sizeof(fileName), argv[2]);
             }
         }
-        else if (argc == 4 && MaxVersion)
+        else if (argc == 4)
         {
-            /* Buildnumber.exe path file max */
+            if (!resetVersion)
+            {
+                printf("Illegal number of parameters\n");
+                return ERR_PARSE;
+            }
+
+            /* BuildNumber path file 0 */
 
             strcat_s(filePath, sizeof(filePath), argv[1]);
 
@@ -146,10 +302,14 @@ int main(int argc, char* argv[])
     printf("Using file: %s\n", filePath);
 
     FILE* fBuildNumber;
-
+    char versionFormat[64] = "_0.01.001";
     unsigned int major = 0;
     unsigned int minor = 0;
     unsigned int build = 0;
+
+    char majorFmt[32];
+    char minorFmt[32];
+    char buildFmt[32];
 
     fBuildNumber = fopen(filePath, "r");
 
@@ -175,30 +335,18 @@ int main(int argc, char* argv[])
                 {
                     token = strtok(NULL, " \t\r\n");
 
-                    if (token != NULL)
+                    if (token)
                     {
-                        majorWidth = (int)strlen(token);
-
-                        if (sscanf_s(token, "%u", &major) == 0)
-                        {
-                            printf("Error while parsing VER_MAJOR\n");
-                            return ERR_PARSE;
-                        }
+                        major = (unsigned int)atoi(token);
                     }
                 }
                 else if (!strcmp(token, "VER_MINOR"))
                 {
                     token = strtok(NULL, " \t\r\n");
 
-                    if (token != NULL)
+                    if (token)
                     {
-                        minorWidth = (int)strlen(token);
-
-                        if (sscanf_s(token, "%u", &minor) == 0)
-                        {
-                            printf("Error while parsing VER_MINOR\n");
-                            return ERR_PARSE;
-                        }
+                        minor = (unsigned int)atoi(token);
                     }
                 }
                 else if (!strcmp(token, "BUILDNUMBER"))
@@ -206,26 +354,47 @@ int main(int argc, char* argv[])
                     token = strtok(NULL, " \t\r\n");
 
                     if (token)
-                        sscanf_s(token, "%u", &build);
+                    {
+                        build = (unsigned int)atoi(token);
+                    }
+                }
+                else if (!strcmp(token, "VERSION_FORMAT"))
+                {
+                    token = strtok(NULL, "\"");
+
+                    if (token)
+                    {
+                        strcpy_s(versionFormat, sizeof(versionFormat), token);
+                    }
                 }
             }
         }
-
         fclose(fBuildNumber);
     }
-    else
-    {
+    else {
         printf("File %s not found. Try to create a new file.\n", filePath);
         resetVersion = true;
     }
 
-    printf("Old build version: %0*u.%0*u.%0*u\n",
-        majorWidth,
-        major,
-        minorWidth,
-        minor,
-        lenght_maxBuildnumber,
-        build);
+    char versionString[64];
+
+    if (!GetFormatParts(
+        versionFormat,
+        majorFmt, sizeof(majorFmt),
+        minorFmt, sizeof(minorFmt),
+        buildFmt, sizeof(buildFmt)))
+    {
+        printf("Invalid VERSION_FORMAT\n");
+        return ERR_PARSE;
+    }
+
+    unsigned int maxMajor = GetPatternMaxValuePart(majorFmt);
+    unsigned int maxMinor = GetPatternMaxValuePart(minorFmt);
+    unsigned int maxBuild = GetPatternMaxValuePart(buildFmt);
+
+    BuildVersionString(versionString, sizeof(versionString), major, minor, build, versionFormat);
+
+    printf("Old build version: %s\n", versionString);
 
     if (resetVersion)
     {
@@ -233,35 +402,23 @@ int main(int argc, char* argv[])
         minor = 0;
         build = 0;
     }
-    else if (++build > (unsigned int)maxBuildnumber)
+    else if (++build > maxBuild)
     {
-        unsigned int oldMajor = major;
-        unsigned int oldMinor = minor;
 
         build = 0;
 
         /* Prüfen, ob minor breiter werden würde */
-        int newMinorWidth = snprintf(NULL, 0, "%u", minor + 1);
-
-        if (newMinorWidth > minorWidth)
+        if (minor >= maxMinor)
         {
-        //    printf("WARNING: VER_MINOR width overflow (%0*u -> %u). "
-        //        "Incrementing VER_MAJOR instead.\n", minorWidth, oldMinor, minor + 1);
-
             minor = 0;
             major++;
 
-            int newMajorWidth = snprintf(NULL, 0, "%u", major);
-
-            if (newMajorWidth > majorWidth)
+            if (major > maxMajor)
             {
-                printf("WARNING: VER_MAJOR changed string length (%0*u -> %u)\n",
-                    majorWidth,
-                    oldMajor,
-                    major);
-
-                majorWidth = newMajorWidth;
+                printf("Maximum version reached\n");
+                return ERR_MAXVER;
             }
+
         }
         else
         {
@@ -281,48 +438,60 @@ int main(int argc, char* argv[])
     struct tm tm;
     tm = *localtime(&t);
 
-    fprintf(fBuildNumber, "/* Generated by BuildNumber %s */\n\n", VERSION);
+    BuildVersionString(versionString, sizeof(versionString), major, minor, build, versionFormat);
 
+    char buildString[32];
+    FormatValue(buildString, sizeof(buildString), build, buildFmt);
+    char minorString[32];
+    FormatValue(minorString, sizeof(minorString), minor, minorFmt);
+    char majorString[32];
+    FormatValue(majorString, sizeof(majorString), major, majorFmt);
+    fprintf(fBuildNumber, "/* Generated by Buildnumber %s */\n\n", VERSION);
+
+    fprintf(fBuildNumber,
+        "/*\n"
+        "Version Patterns \n"
+        "VER_MAJOR, VER_MINOR, and BUILDNUMBER contain the current numeric version values.\n"
+        "VERSION_FORMAT defines how VERSION_STR and BUILDNUMBER_STR are generated.\n\n"
+        "Digits define the minimum number of numeric positions and are printed as leading zeros if necessary.\n"
+        "Digits plus the number of '_' characters define the maximum number of numeric positions.\n\n"
+        "\"___1\", for example, defines a maximum of 4 digits but a minimum of 1 digit.\n"
+        "\"0001\", for example, defines a maximum of 4 digits and a minimum of 4 digits, printed with leading zeros.\n\n"
+        "VERSION_FORMAT \"_0.00.000\" generates VERSION_STR values from \"0.00.001\" to \"99.99.999\".\n"
+        "VERSION_FORMAT \"_0._0.__0\" generates VERSION_STR values from \"0.0.1\" to \"99.99.999\".\n" 
+        "*/ \n"
+    );
     fprintf(fBuildNumber, "#ifndef BUILD_NUMBER_H\n");
     fprintf(fBuildNumber, "#define BUILD_NUMBER_H\n\n");
 
-    fprintf(fBuildNumber, "#define VER_MAJOR %0*u\n", majorWidth, major);
+    fprintf(fBuildNumber, "/* Configuration of generated version string */\n");
+    fprintf(fBuildNumber, "#define VERSION_FORMAT \"%s\"\n\n", versionFormat);
 
-    fprintf(fBuildNumber, "#define VER_MINOR %0*u\n", minorWidth, minor);
-    fprintf(fBuildNumber, "#define BUILDNUMBER %u\n\n", build);
+    fprintf(fBuildNumber, "/* Customising the current version */\n");
+    fprintf(fBuildNumber, "#define VER_MAJOR %u\t\t\t\t\t\t\t// Major version number as Integer\n", major);
+    fprintf(fBuildNumber, "#define VER_MINOR %u\t\t\t\t\t\t\t// Minor version number as Integer\n", minor);
+    fprintf(fBuildNumber, "#define BUILDNUMBER %u\t\t\t\t\t\t// Build number as Integer\n\n", build);
 
-    fprintf(fBuildNumber, "#define BUILDNUMBER_STR \"%0*d\"\n", lenght_maxBuildnumber, build);
-
-    fprintf(fBuildNumber,
-        "#define VERSION_STR \"%0*u.%0*u.%0*u\"\n",
-        majorWidth,
-        major,
-        minorWidth,
-        minor,
-        lenght_maxBuildnumber,
-        build);
-
-    fprintf(fBuildNumber,
-        "#define BUILDDATE_STR \"%d-%02d-%02d %02d:%02d:%02d\"\n",
-        tm.tm_year + 1900,
-        tm.tm_mon + 1,
-        tm.tm_mday,
-        tm.tm_hour,
-        tm.tm_min,
-        tm.tm_sec);
+    fprintf(fBuildNumber, 
+        "/* --------------------------------------------------------------------------------- */\n"
+        "/* ******************* Generated version values. DO NOT MODIFY! ******************** */\n"
+        "/* --------------------------------------------------------------------------------- */\n");
+    fprintf(fBuildNumber, "#define MAJORMINOR %u%s\t\t\t\t\t\t// MajorMinor version number as Integer\n", major, minorString);
+    fprintf(fBuildNumber, "#define MAJOR_STR  \"%s\"\t\t\t\t\t\t// Major version as String\n", majorString);
+    fprintf(fBuildNumber, "#define MINOR_STR  \"%s\"\t\t\t\t\t\t// Minor version as String\n", minorString);    
+    fprintf(fBuildNumber, "#define MAJORMINOR_STR  \"%s%s\"\t\t\t\t// MajorMinor number as String\n", majorString, minorString);
+    fprintf(fBuildNumber, "#define BUILDNUMBER_STR \"%s\"\t\t\t\t// Build number as String\n", buildString);
+    fprintf(fBuildNumber, "#define VERSION_STR \"%s\"\t\t\t\t// Version number as String\n", versionString);
+    
+    fprintf(fBuildNumber, "#define BUILDDATE_STR \"%d-%02d-%02d %02d:%02d:%02d\"\t// Creation Date as String\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    fprintf(fBuildNumber, "\n");
 
     fprintf(fBuildNumber, "\n#endif\n");
 
     fclose(fBuildNumber);
 
     printf("\nFile %s updated.\n", filePath);
-    printf("New build version : %0*u.%0*u.%0*u\n",
-        majorWidth,
-        major,
-        minorWidth,
-        minor,
-        lenght_maxBuildnumber,
-        build);
+    printf("New build version : %s\n", versionString);
 
     return ERR_NONE;
 }
