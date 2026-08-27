@@ -16,7 +16,7 @@
 #include <string.h>
 #include <time.h>
 
-static const char USAGE[2][1300] = {{R"(
+static const char USAGE[2][1400] = {{R"(
 BuildNumber %s
 
 Automatically increments version and build numbers in a C header file.
@@ -36,11 +36,10 @@ Parameters:
   file       Header file name. Default: %s
 
 Version Patterns:
-VER_MAJOR, VER_MINOR and BUILDNUMBER contain the
-current numeric version values.
+VER_MAJOR, VER_MINOR and BUILDNUMBER contain the current numeric version values.
+SOFTWARE_DIS  Optional SAP Software DIS as Long, e.g. 09xxxxxxxxxx
 
-VERSION_FORMAT defines how VERSION_STR and
-BUILDNUMBER_STR are generated.
+VERSION_FORMAT defines how VERSION_STR and BUILDNUMBER_STR are generated.
 
   The number of digits in a format string defines the minimum number of numeric positions and printed as leading zeros, if necessary.
   The number of digits plus the number of the '_' character defines the maximum number of numeric positions.
@@ -396,6 +395,7 @@ int main(int argc, char* argv[]){
 			"Version Patterns \n"
 			"VER_MAJOR, VER_MINOR, and BUILDNUMBER contain the current numeric "
 			"version values.\n"
+			"SOFTWARE_DIS  Optional SAP Software DIS as Long, e.g. 09xxxxxxxxxx\n\n"
 			"VERSION_FORMAT defines how VERSION_STR and BUILDNUMBER_STR are "
 			"generated.\n\n"
 			"Digits define the minimum number of numeric positions and are "
