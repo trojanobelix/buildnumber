@@ -412,10 +412,6 @@ int main(int argc, char* argv[]){
 					   oldBuild,
 					   versionFormat);
 
-	printf("%s-build increment. Actual firmware version: %s\n",
-		mode == MODE_PRE ? "PRE" : "POST",
-		actualVersionString);
-
 	/*
 	 * BUILD_MODE Bedeutung:
 	 *
@@ -498,6 +494,10 @@ int main(int argc, char* argv[]){
 				   build,
 				   versionFormat);
 
+	printf("%s-build increment. Actual firmware version: %s\n",
+		mode == MODE_PRE ? "PRE" : "POST",
+		actualVersionString);
+
 	FormatValue(buildString, sizeof(buildString), build, buildFmt);
 	FormatValue(minorString, sizeof(minorString), minor, minorFmt);
 	FormatValue(majorString, sizeof(majorString), major, majorFmt);
@@ -534,7 +534,6 @@ int main(int argc, char* argv[]){
 	fprintf(fBuildNumber, "#include <stdint.h>\n\n");
 	fprintf(fBuildNumber, "/* Configuration of generated version string */\n");
 	fprintf(fBuildNumber, "#define VERSION_FORMAT \"%s\"\n\n", versionFormat);
-	fprintf(fBuildNumber, "#define BUILD_MODE_%s\n\n", mode == MODE_PRE ? "PRE" : "POST");
 
 	fprintf(fBuildNumber, "/* Customising the current version */\n");
 	fprintf(fBuildNumber,
@@ -571,6 +570,7 @@ int main(int argc, char* argv[]){
 						  "/* "
 						  "------------------------------------------------------"
 						  "--------------------------- */\n");
+	fprintf(fBuildNumber, "#define BUILD_MODE_%s\n\n", mode == MODE_PRE ? "PRE" : "POST");
 	fprintf(fBuildNumber,
 			"#define MAJORMINOR %u%s\t\t\t\t\t\t// MajorMinor version number as "
 			"Integer\n",
