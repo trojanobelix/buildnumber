@@ -1,4 +1,4 @@
-#define VERSION "V3.1"
+#define VERSION "V3.2"
 #define DEFAULTFILENAME "buildnumber.h"
 
 #define ERR_MAXVER -4
@@ -16,14 +16,15 @@
 #include <string.h>
 #include <time.h>
 
-static const char USAGE[2][1400] = {{R"(
+static const char USAGE[2][2000] = {{R"(
 BuildNumber %s
 
 Automatically increments version and build numbers in a C header file.
 If the file does not exist, it will be created.
 
 Usage:
-  BuildNumber [path] [file]
+  BuildNumber [path] [file] -pre
+  BuildNumber [path] [file] -post
 
 VERSION_FORMAT determines:
   - field formatting
@@ -32,8 +33,13 @@ VERSION_FORMAT determines:
   - maximum major version
 
 Parameters:
-  path       Optional target directory.
-  file       Header file name. Default: %s
+  path      Optional target directory.
+  file      Header file name. Default: %s
+  -pre		Pre-build step. Increment version before compilation.
+  -post		Post-build step. Prepare version for next build.
+  -h		this usage information.
+
+-pre or -post is mandatory
 
 Version Patterns:
 VER_MAJOR, VER_MINOR and BUILDNUMBER contain the current numeric version values.
@@ -172,75 +178,125 @@ bool GetFormatParts(const char* versionFormat, char* majorFmt,
 
 	return true;
 }
+
+void IncrementVersion(unsigned int* major,
+					  unsigned int* minor,
+					  unsigned int* build,
+					  unsigned int maxMajor,
+					  unsigned int maxMinor,
+					  unsigned int maxBuild){
+	if (++(*build) > maxBuild) {
+		*build = 0;
+
+		if (*minor >= maxMinor) {
+			*minor = 0;
+			(*major)++;
+
+			if (*major > maxMajor) {
+				printf("Maximum version reached\n");
+				exit(ERR_MAXVER);
+			}
+		} else {
+			(*minor)++;
+		}
+	}
+}
+
 int main(int argc, char* argv[]){
 	char fileName[FILENAME_MAX] = DEFAULTFILENAME;
 	char filePath[FILENAME_MAX] = "";
-
-	bool resetVersion = false;
-
-	/* Help */
-
-	if (argc > 1) {
-		if (!strcmp(argv[1], "/?") || !strcmp(argv[1], "/h") ||
-			!strcmp(argv[1], "-?") || !strcmp(argv[1], "-h")) {
-			printf(USAGE[0], VERSION, DEFAULTFILENAME);
-			printf("%s", USAGE[1]);
-
-			return ERR_NONE;
-		}
-	}
+	typedef enum
+	{
+		MODE_NONE = 0,
+		MODE_PRE,
+		MODE_POST
+	} BUILD_MODE;
 
 	/* Parameter auswerten */
 
-	if (argc > 1) {
-		if (!strcmp(argv[argc - 1], "0")) {
+	bool resetVersion = false;
+	BUILD_MODE mode = MODE_NONE;
+	BUILD_MODE lastMode = MODE_NONE;
+
+	/* Nicht-Optionsparameter sammeln */
+	char* params[2];
+	int paramCount = 0;
+
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "-pre")) {
+			if (mode != MODE_NONE) {
+				printf("Only one mode allowed (-pre or -post)\n");
+				return ERR_PARSE;
+			}
+
+			mode = MODE_PRE;
+		} else if (!strcmp(argv[i], "-post")) {
+			if (mode != MODE_NONE) {
+				printf("Only one mode allowed (-pre or -post)\n");
+				return ERR_PARSE;
+			}
+
+			mode = MODE_POST;
+		} else if (!strcmp(argv[i], "0")) {
 			resetVersion = true;
 			printf("Reset version number\n");
-		}
-
-		if (argc == 2) {
-			/* Buildnumber.exe test.h */
-
-			strcpy_s(fileName, sizeof(fileName), argv[1]);
-		} else if (argc == 3) {
-			/* BuildNumber path file
-			   oder
-			   BuildNumber file 0 */
-
-			if (resetVersion) {
-				strcpy_s(fileName, sizeof(fileName), argv[1]);
-			} else {
-				strcat_s(filePath, sizeof(filePath), argv[1]);
-
-				size_t len = strlen(filePath);
-
-				if (len > 0 && filePath[len - 1] != '\\' && filePath[len - 1] != '/') {
-					strcat_s(filePath, sizeof(filePath), "\\");
-				}
-
-				strcpy_s(fileName, sizeof(fileName), argv[2]);
-			}
-		} else if (argc == 4) {
-			if (!resetVersion) {
+		} else if (!strcmp(argv[i], "/?") ||
+				   !strcmp(argv[i], "/h") ||
+				   !strcmp(argv[i], "-?") ||
+				   !strcmp(argv[i], "-h")) {
+			printf(USAGE[0], VERSION, DEFAULTFILENAME);
+			printf("%s", USAGE[1]);
+			return ERR_NONE;
+		} else {
+			if (paramCount >= 2) {
 				printf("Illegal number of parameters\n");
 				return ERR_PARSE;
 			}
 
-			/* BuildNumber path file 0 */
+			params[paramCount++] = argv[i];
+		}
+	}
 
-			strcat_s(filePath, sizeof(filePath), argv[1]);
+	if (mode == MODE_NONE) {
+		printf("Missing mode parameter (-pre or -post)\n");
+		return ERR_PARSE;
+	}
 
-			size_t len = strlen(filePath);
+	printf("Build mode: %s\n",
+	   mode == MODE_PRE ? "PRE" : "POST");
 
-			if (len > 0 && filePath[len - 1] != '\\' && filePath[len - 1] != '/') {
-				strcat_s(filePath, sizeof(filePath), "\\");
+	switch (paramCount)
+	{
+		case 0:
+			/* Default: buildnumber.h */
+			break;
+
+		case 1:
+			/* BuildNumber test.h */
+			strcpy_s(fileName, sizeof(fileName), params[0]);
+			break;
+
+		case 2:
+			/* BuildNumber path test.h */
+			strcat_s(filePath, sizeof(filePath), params[0]);
+
+			{
+				size_t len = strlen(filePath);
+
+				if (len > 0 &&
+					filePath[len - 1] != '\\' &&
+					filePath[len - 1] != '/')
+				{
+					strcat_s(filePath, sizeof(filePath), "\\");
+				}
 			}
 
-			strcpy_s(fileName, sizeof(fileName), argv[2]);
-		} else if (argc > 1) {
+			strcpy_s(fileName, sizeof(fileName), params[1]);
+			break;
+
+		default:
 			printf("Illegal number of parameters\n");
 			return ERR_PARSE;
-		}
 	}
 
 	strcat_s(filePath, sizeof(filePath), fileName);
@@ -300,6 +356,10 @@ int main(int argc, char* argv[]){
 					if (token) {
 						strcpy_s(versionFormat, sizeof(versionFormat), token);
 					}
+				} else if (!strcmp(token, "BUILD_MODE_PRE")) {
+					lastMode = MODE_PRE;
+				} else if (!strcmp(token, "BUILD_MODE_POST")) {
+					lastMode = MODE_POST;
 				} else if (!strcmp(token, "SOFTWARE_DIS")) {
 					token = strtok(NULL, " \t\r\n");
 
@@ -338,28 +398,81 @@ int main(int argc, char* argv[]){
 	BuildVersionString(versionString, sizeof(versionString), major, minor, build,
 					   versionFormat);
 
-	printf("Old build version: %s\n", versionString);
+	printf("Old build version: %s => ", versionString);
 
-	if (resetVersion) {
-		major = 0;
-		minor = 0;
-		build = 0;
-	} else if (++build > maxBuild) {
-		build = 0;
+	unsigned int oldMajor = major;
+	unsigned int oldMinor = minor;
+	unsigned int oldBuild = build;
+	char actualVersionString[64];
 
-		/* Prüfen, ob minor breiter werden würde */
-		if (minor >= maxMinor) {
-			minor = 0;
-			major++;
+	BuildVersionString(actualVersionString,
+					   sizeof(actualVersionString),
+					   oldMajor,
+					   oldMinor,
+					   oldBuild,
+					   versionFormat);
 
-			if (major > maxMajor) {
-				printf("Maximum version reached\n");
-				return ERR_MAXVER;
-			}
-		} else {
-			minor++;
-		}
+	printf("%s-build increment. Actual firmware version: %s\n",
+		mode == MODE_PRE ? "PRE" : "POST",
+		actualVersionString);
+
+	/*
+	 * BUILD_MODE Bedeutung:
+	 *
+	 * PRE  -> Version wird im Pre-Build erhöht
+	 * POST -> Version wird im Post-Build erhöht
+	 *
+	 * Übergänge:
+	 * PRE  -> PRE   : erhöhen
+	 * PRE  -> POST  : erhöhen Kompilierung wurde bereits mit BUILDNUMBER gebaut. Nächste freie Buildnummer reservieren.
+	 * POST -> PRE   : nicht erhöhen  Letzte Buildnummer wurde bereits im Post-Build reserviert. Nicht nochmals erhöhen.
+	 * POST -> POST  : erhöhen
+	 * NONE -> PRE   : erhöhen
+	 * NONE -> POST  : erhöhen
+	 */
+
+	bool incrementVersion = false;
+
+	switch (lastMode)
+	{
+		case MODE_PRE:
+			incrementVersion = (mode == MODE_PRE) || (mode == MODE_POST);
+			break;
+		case MODE_POST:
+			incrementVersion = (mode == MODE_POST);
+			break;
+		case MODE_NONE:
+			incrementVersion = false;
+			break;
+		default:
+			incrementVersion = false;
+			break;
 	}
+
+	unsigned int nextMajor = major;
+	unsigned int nextMinor = minor;
+	unsigned int nextBuild = build;
+
+	if (resetVersion)
+	{
+		nextMajor = 0;
+		nextMinor = 0;
+		nextBuild = 1;
+	} else if (incrementVersion)
+	{
+		IncrementVersion(&nextMajor,
+						 &nextMinor,
+						 &nextBuild,
+						 maxMajor,
+						 maxMinor,
+						 maxBuild);
+	}
+
+	/* Ab hier wird ausschließlich die neue Version verwendet */
+
+	major = nextMajor;
+	minor = nextMinor;
+	build = nextBuild;
 
 	fBuildNumber = fopen(filePath, "w");
 
@@ -372,18 +485,23 @@ int main(int argc, char* argv[]){
 	struct tm tm;
 	tm = *localtime(&t);
 
-	BuildVersionString(versionString, sizeof(versionString), major, minor, build,
-					   versionFormat);
-
 	char buildString[32];
-	FormatValue(buildString, sizeof(buildString), build, buildFmt);
 	char minorString[32];
-	FormatValue(minorString, sizeof(minorString), minor, minorFmt);
 	char majorString[32];
-	FormatValue(majorString, sizeof(majorString), major, majorFmt);
-
 	char sapDisStr[32];
 	char sapDisBcdArray[128];
+
+	BuildVersionString(versionString,
+				   sizeof(versionString),
+				   major,
+				   minor,
+				   build,
+				   versionFormat);
+
+	FormatValue(buildString, sizeof(buildString), build, buildFmt);
+	FormatValue(minorString, sizeof(minorString), minor, minorFmt);
+	FormatValue(majorString, sizeof(majorString), major, majorFmt);
+
 	if (use_sap_dis) {
 		sprintf_s(sapDisStr, sizeof(sapDisStr), "%" PRIu64, sap_dis);
 		ToBcdArrayString(sap_dis, sapDisBcdArray, sizeof(sapDisBcdArray));
@@ -416,19 +534,25 @@ int main(int argc, char* argv[]){
 	fprintf(fBuildNumber, "#include <stdint.h>\n\n");
 	fprintf(fBuildNumber, "/* Configuration of generated version string */\n");
 	fprintf(fBuildNumber, "#define VERSION_FORMAT \"%s\"\n\n", versionFormat);
+	fprintf(fBuildNumber, "#define BUILD_MODE_%s\n\n", mode == MODE_PRE ? "PRE" : "POST");
 
 	fprintf(fBuildNumber, "/* Customising the current version */\n");
-	fprintf(
-		fBuildNumber,
-		"#define VER_MAJOR %u\t\t\t\t\t\t\t// Major version number as Integer\n",
-		major);
-	fprintf(
-		fBuildNumber,
-		"#define VER_MINOR %u\t\t\t\t\t\t\t// Minor version number as Integer\n",
-		minor);
+	fprintf(fBuildNumber,
+			"/* %s-build increment. Actual firmware version: %s */\n",
+			mode == MODE_PRE ? "PRE" : "POST",
+			actualVersionString);
+	fprintf(fBuildNumber,
+			"#define VER_MAJOR %u\t\t\t\t\t\t\t// Major version number as Integer\n",
+			major);
+
+	fprintf(fBuildNumber,
+			"#define VER_MINOR %u\t\t\t\t\t\t\t// Minor version number as Integer\n",
+			minor);
+
 	fprintf(fBuildNumber,
 			"#define BUILDNUMBER %u\t\t\t\t\t\t// Build number as Integer\n\n",
 			build);
+
 	if (use_sap_dis) {
 		fprintf(fBuildNumber,
 				"#define SOFTWARE_DIS %" PRIu64

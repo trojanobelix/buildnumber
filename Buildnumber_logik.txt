@@ -1,0 +1,82 @@
+Beispiel:
+
+Normaler Build
+Die Header-Datei enthält die nächste Version und die Firmware wird mit genau dieser Version gebaut.
+
+Beispiel:
+Vorher in buildnumber.h steht die aus dem letzten Build:
+
+
+Fall 1 war PRECOMPILED bleibt PRECOMPILED
+#define VER_MAJOR 3
+#define VER_MINOR 1
+#define BUILDNUMBER 123
+PRECOMPILED
+
+Buildnumber wird vor dem compilen aufgerufen, also muss Buildnumber bei PRECOMPILED  
+BUILDNUMBER+1 = 124 nehmen, da 123 bei der letzten firmware verwendet wurde
+
+Firmware 3.01.124
+
+neue Header:
+#define VER_MAJOR 3
+#define VER_MINOR 1
+#define BUILDNUMBER 124
+PRECOMPILED
+
+
+Fall 2 war POSTCOMPILED bleibt POSTCOMPILED
+#define VER_MAJOR 3
+#define VER_MINOR 1
+#define BUILDNUMBER 123
+POSTCOMPILED
+
+Buildnumber wird nach compilen aufgerufen, also muss Buildnumber bei POSTCOMPILED  
+BUILDNUMBER = 123 nehmen, da 123 bei der letzten compilen erzeugt und BUILDNUMBER-1 = 122 verwendet wurde
+
+Firmware 3.01.123
+
+neue Header:
+#define VER_MAJOR 3
+#define VER_MINOR 1
+#define BUILDNUMBER 124
+POSTCOMPILED
+
+
+Fall 3 war POSTCOMPILED wird PRECOMPILED
+#define VER_MAJOR 3
+#define VER_MINOR 1
+#define BUILDNUMBER 123
+POSTCOMPILED
+
+Buildnumber wird vor compilen aufgerufen, also muss Buildnumber bei PRECOMPILED mit vorher POSTCOMPILED  
+BUILDNUMBER = 123 nehmen, da 123 bei der letzten compilen erzeugt und BUILDNUMBER-1 = 122 verwendet wurde
+
+Firmware 3.01.123
+
+neue Header:
+#define VER_MAJOR 3
+#define VER_MINOR 1
+#define BUILDNUMBER 123
+PRECOMPILED
+
+
+Fall 4 war PRECOMPILED wird POSTCOMPILED
+#define VER_MAJOR 3
+#define VER_MINOR 1
+#define BUILDNUMBER 123
+PRECOMPILED
+
+Buildnumber wird nach compilen aufgerufen, also muss Buildnumber bei  POSTCOMPILED mit vorher PRECOMPILED  
+BUILDNUMBER+1 = 124 nehmen, da 123 bei der letzten compilen erzeugt und auch in der Firmware verwendet wurde
+
+Firmware 3.01.124
+
+neue Header:
+#define VER_MAJOR 3
+#define VER_MINOR 1
+#define BUILDNUMBER 125
+POSTCOMPILED
+
+
+
