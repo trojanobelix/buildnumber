@@ -16,49 +16,67 @@
 #include <string.h>
 #include <time.h>
 
-static const char USAGE[2][2000] = {{R"(
+static const char USAGE[2][4000] = {{R"(
 BuildNumber %s
 
-Automatically increments version and build numbers in a C header file.
-If the file does not exist, it will be created.
+Maintains version and build numbers in a C header file.
+If the file does not exist, it will be created automatically.
 
 Usage:
   BuildNumber [path] [file] -pre
   BuildNumber [path] [file] -post
+  BuildNumber [path] [file] -reset -pre
+  BuildNumber [path] [file] -reset -post
 
+Parameters:
+  path      Optional target directory.
+  file      Header file name. Default: buildnumber.h
+  -pre      Pre-build step. Increment version before compilation.
+  -post     Post-build step. Prepare version for next build.
+  -reset    Reset version numbering and initialize the version to 0.00.001.
+  -h        This usage information.
+ 
+  -pre or -post is mandatory.
+  -reset is optional and can be combined with -pre or -post.
+
+Version Handling:
+  New files and reset operations start with version 0.00.001.
+ 
+PRE mode:
+  The generated header contains the version used for the next compilation.
+ 
+POST mode:
+  The generated header contains the next available version after a successful compilation.
+ 
 VERSION_FORMAT determines:
   - field formatting
   - maximum build number
   - maximum minor version
   - maximum major version
-
-Parameters:
-  path      Optional target directory.
-  file      Header file name. Default: %s
-  -pre		Pre-build step. Increment version before compilation.
-  -post		Post-build step. Prepare version for next build.
-  -h		this usage information.
-
--pre or -post is mandatory
-
+ 
 Version Patterns:
-VER_MAJOR, VER_MINOR and BUILDNUMBER contain the current numeric version values.
-SOFTWARE_DIS  Optional SAP Software DIS as Long, e.g. 09xxxxxxxxxx
-
-VERSION_FORMAT defines how VERSION_STR and BUILDNUMBER_STR are generated.
-
-  The number of digits in a format string defines the minimum number of numeric positions and printed as leading zeros, if necessary.
-  The number of digits plus the number of the '_' character defines the maximum number of numeric positions.
-  e.g ___0, for example, defines a maximum of 4 digits, but a minimum of 1 digit.
-      0000, for example, defines a maximum of 4 digits and a minimum of 4 digits, printed with leading zeros.
+  VER_MAJOR, VER_MINOR, BUILDNUMBER contain the current numeric version values.
+ 
+SOFTWARE_DIS
+  Optional SAP Software DIS as Long, e.g. 09xxxxxxxxxx. if defined it will be created as a long, a string and a BCD array
+ 
+VERSION_FORMAT
+  defines how VERSION_STR and BUILDNUMBER_STR are generated.
+ 
+  The number of digits in a format string defines the minimum number of numeric positions and is printed as leading zeros if necessary.
+  The number of digits plus the number of '_' characters defines the maximum number of numeric positions.
+ 
+  Example:
+    ___0 -> maximum 4 digits, minimum 1 digit
+    0000 -> maximum 4 digits, minimum 4 digits, with leading zeros.
 
 Version Rollover:
-When BUILDNUMBER exceeds the maximum value defined by the BUILD field in VERSION_FORMAT, VER_MINOR is incremented.
-When VER_MINOR exceeds the maximum value defined by the MINOR field in VERSION_FORMAT, VER_MAJOR is incremented.
+  When BUILDNUMBER exceeds the maximum value defined by the BUILD field in VERSION_FORMAT, VER_MINOR is incremented.
+  When VER_MINOR exceeds the maximum value defined by the MINOR field in VERSION_FORMAT, VER_MAJOR is incremented.
 )"},
 									{R"(
-
 Examples:
+
 VER_MAJOR      0
 VER_MINOR      1
 BUILDNUMBER    1
@@ -66,13 +84,25 @@ BUILDNUMBER    1
 VERSION_FORMAT "_0.00.000"
 
 Generated VERSION_STR:
+
   0.01.001
 
 Pattern Limits:
+
   _0    -> range 0..99
   00    -> range 00..99
   000   -> range 000..999
   _000  -> range 000..9999
+
+Version Rollover:
+
+  3.01.999 -> 3.02.000
+  3.99.999 -> 4.00.000
+
+Initial Version:
+
+  New file      -> 0.00.001
+  Reset (-reset)     -> 0.00.001
 
 )"}};
 
@@ -237,7 +267,7 @@ int main(int argc, char* argv[]){
 			}
 
 			mode = MODE_POST;
-		} else if (!strcmp(argv[i], "0")) {
+		} else if (!strcmp(argv[i], "-reset")) {
 			resetVersion = true;
 			printf("Reset version number\n");
 		} else if (!strcmp(argv[i], "/?") ||
@@ -261,9 +291,6 @@ int main(int argc, char* argv[]){
 		printf("Missing mode parameter (-pre or -post)\n");
 		return ERR_PARSE;
 	}
-
-	printf("Build mode: %s\n",
-	   mode == MODE_PRE ? "PRE" : "POST");
 
 	switch (paramCount)
 	{
@@ -398,7 +425,7 @@ int main(int argc, char* argv[]){
 	BuildVersionString(versionString, sizeof(versionString), major, minor, build,
 					   versionFormat);
 
-	printf("Old build version: %s => ", versionString);
+	printf("Old build version: %s\n", versionString);
 
 	unsigned int oldMajor = major;
 	unsigned int oldMinor = minor;
@@ -494,10 +521,6 @@ int main(int argc, char* argv[]){
 				   build,
 				   versionFormat);
 
-	printf("%s-build increment. Actual firmware version: %s\n",
-		mode == MODE_PRE ? "PRE" : "POST",
-		actualVersionString);
-
 	FormatValue(buildString, sizeof(buildString), build, buildFmt);
 	FormatValue(minorString, sizeof(minorString), minor, minorFmt);
 	FormatValue(majorString, sizeof(majorString), major, majorFmt);
@@ -535,31 +558,31 @@ int main(int argc, char* argv[]){
 	fprintf(fBuildNumber, "/* Configuration of generated version string */\n");
 	fprintf(fBuildNumber, "#define VERSION_FORMAT \"%s\"\n\n", versionFormat);
 
-	fprintf(fBuildNumber, "/* Customising the current version */\n");
+	fprintf(fBuildNumber, "/* Customising the current version */\n\n");
 	fprintf(fBuildNumber,
 			"/* %s-build increment. Actual firmware version: %s */\n",
 			mode == MODE_PRE ? "PRE" : "POST",
 			actualVersionString);
+
 	fprintf(fBuildNumber,
-			"#define VER_MAJOR %u\t\t\t\t\t\t\t// Major version number as Integer\n",
+			"#pragma message(\"%s-build increment. Actual firmware version: %s\")\n\n",
+			mode == MODE_PRE ? "PRE" : "POST",
+			actualVersionString);
+
+	fprintf(fBuildNumber, "#define VER_MAJOR %u\t\t\t\t\t\t\t// Major version number as Integer\n",
 			major);
 
-	fprintf(fBuildNumber,
-			"#define VER_MINOR %u\t\t\t\t\t\t\t// Minor version number as Integer\n",
+	fprintf(fBuildNumber, "#define VER_MINOR %u\t\t\t\t\t\t\t// Minor version number as Integer\n",
 			minor);
 
-	fprintf(fBuildNumber,
-			"#define BUILDNUMBER %u\t\t\t\t\t\t// Build number as Integer\n\n",
+	fprintf(fBuildNumber, "#define BUILDNUMBER %u\t\t\t\t\t\t// Build number as Integer\n\n",
 			build);
 
 	if (use_sap_dis) {
-		fprintf(fBuildNumber,
-				"#define SOFTWARE_DIS %" PRIu64
-				"ULL\t\t\// SAP Software DIS as Long\n\n",
+		fprintf(fBuildNumber, "#define SOFTWARE_DIS %" PRIu64 "ULL\t\t// SAP Software DIS as Long\n\n",
 				sap_dis);
 	} else{
-		fprintf(fBuildNumber,
-		"// #define SOFTWARE_DIS 09xxxxxxxxxxULL\t\t// SAP Software DIS as Long\n\n");
+		fprintf(fBuildNumber, "// #define SOFTWARE_DIS 090123456789ULL\t\t// Define the SAP DIS number as Long here, and you’ll get it as Long, String and BCD Array\n\n");
 	}
 
 	fprintf(fBuildNumber, "/* "
@@ -571,47 +594,34 @@ int main(int argc, char* argv[]){
 						  "------------------------------------------------------"
 						  "--------------------------- */\n");
 	fprintf(fBuildNumber, "#define BUILD_MODE_%s\n\n", mode == MODE_PRE ? "PRE" : "POST");
-	fprintf(fBuildNumber,
-			"#define MAJORMINOR %u%s\t\t\t\t\t\t// MajorMinor version number as "
-			"Integer\n",
+	fprintf(fBuildNumber, "#define MAJORMINOR %u%s\t\t\t\t\t\t// MajorMinor version number as Integer\n",
 			major, minorString);
-	fprintf(fBuildNumber,
-			"#define MAJOR_STR  \"%s\"\t\t\t\t\t\t// Major version as String\n",
+	fprintf(fBuildNumber, "#define MAJOR_STR  \"%s\"\t\t\t\t\t\t// Major version as String\n",
 			majorString);
-	fprintf(fBuildNumber,
-			"#define MINOR_STR  \"%s\"\t\t\t\t\t\t// Minor version as String\n",
+	fprintf(fBuildNumber, "#define MINOR_STR  \"%s\"\t\t\t\t\t\t// Minor version as String\n",
 			minorString);
-	fprintf(fBuildNumber,
-			"#define MAJORMINOR_STR  \"%s%s\"\t\t\t\t// MajorMinor number as "
-			"String\n",
+	fprintf(fBuildNumber, "#define MAJORMINOR_STR  \"%s%s\"\t\t\t\t// MajorMinor number as String\n",
 			majorString, minorString);
-	fprintf(fBuildNumber,
-			"#define BUILDNUMBER_STR \"%s\"\t\t\t\t// Build number as String\n",
+	fprintf(fBuildNumber, "#define BUILDNUMBER_STR \"%s\"\t\t\t\t// Build number as String\n",
 			buildString);
-	fprintf(fBuildNumber,
-			"#define VERSION_STR \"%s\"\t\t\t\t// Version number as String\n\n",
+	fprintf(fBuildNumber, "#define VERSION_STR \"%s\"\t\t\t\t// Version number as String\n\n",
 			versionString);
 	if (use_sap_dis) {
-		fprintf(
-			fBuildNumber,
-			"#define SOFTWARE_DIS_STR \"%12s\"\t\t// SAP software DIS as string\n",
+		fprintf(fBuildNumber, "#define SOFTWARE_DIS_STR \"%12s\"\t\t// SAP software DIS as String\n",
 			sapDisStr);
-		fprintf(fBuildNumber,
-				"#define SOFTWARE_DIS_BCD  {%s}\t// SAP software DIS as BCD Array\n\n",
-				sapDisBcdArray);
+		fprintf(fBuildNumber, "#define SOFTWARE_DIS_BCD  {%s}\t// SAP software DIS as BCD Array\n\n",
+			sapDisBcdArray);
 	}
-	fprintf(fBuildNumber,
-			"#define BUILDDATE_STR \"%d-%02d-%02d %02d:%02d:%02d\"\t// Creation "
-			"Date as String\n",
-			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
-			tm.tm_sec);
-	fprintf(fBuildNumber, "\n");
+	fprintf(fBuildNumber, "#define BUILDDATE_STR \"%d-%02d-%02d %02d:%02d:%02d\"\t// Creation Date as String\n",
+			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 	fprintf(fBuildNumber, "\n#endif\n");
 
 	fclose(fBuildNumber);
 
-	printf("\nFile %s updated.\n", filePath);
-	printf("New build version : %s\n", versionString);
+	printf("File %s updated.\n", filePath);
+	printf("New build version: %s\n\n", versionString);
+	printf("%s-build increment. Actual firmware version: %s\n", mode == MODE_PRE ? "PRE" : "POST",
+		actualVersionString);
 
 	return ERR_NONE;
 }

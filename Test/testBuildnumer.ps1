@@ -1,282 +1,3 @@
-# Test-BuildNumber.ps1
-
-$Exe = ".\BuildNumber.exe"
-$TestFile = "buildnumber.h"
-
-$script:Passed = 0
-$script:Failed = 0
-
-function Remove-TestFile {
-
-    if (Test-Path $TestFile) {
-        Remove-Item $TestFile -Force
-    }
-}
-
-function Get-VersionInfo {
-
-    $text = Get-Content $TestFile -Raw
-
-	$major = [int]([regex]::Match($text, '#define\s+VER_MAJOR\s+(\d+)').Groups[1].Value)
-    $minor = [int]([regex]::Match($text, '#define\s+VER_MINOR\s+(\d+)').Groups[1].Value)
-    $build = [int]([regex]::Match($text, '#define\s+BUILDNUMBER\s+(\d+)').Groups[1].Value)
-
-    if ($text -match 'BUILD_MODE_PRE') {
-        $mode = 'PRE'
-    }
-    elseif ($text -match 'BUILD_MODE_POST') {
-        $mode = 'POST'
-    }
-    else {
-        $mode = 'NONE'
-    }
-
-    [PSCustomObject]@{
-        Major = $major
-        Minor = $minor
-        Build = $build
-        Mode  = $mode
-    }
-}
-
-function Assert-Version {
-
-    param(
-        [string]$Name,
-        [int]$Major,
-        [int]$Minor,
-        [int]$Build,
-        [string]$Mode
-    )
-
-    $v = Get-VersionInfo
-
-    $ok =
-        ($v.Major -eq $Major) -and
-        ($v.Minor -eq $Minor) -and
-        ($v.Build -eq $Build) -and
-        ($v.Mode  -eq $Mode)
-
-    if ($ok) {
-
-        Write-Host "[PASS] $Name" -ForegroundColor Green
-        $script:Passed++
-    }
-    else {
-
-        Write-Host "[FAIL] $Name" -ForegroundColor Red
-        Write-Host "Expected: $Major.$Minor.$Build  $Mode"
-        Write-Host "Actual  : $($v.Major).$($v.Minor).$($v.Build)  $($v.Mode)"
-
-        $script:Failed++
-    }
-}
-
-function Assert-ExitCode {
-
-    param(
-        [string]$Name,
-        [int]$ExitCode
-    )
-
-    if ($LASTEXITCODE -eq $ExitCode) {
-
-        Write-Host "[PASS] $Name" -ForegroundColor Green
-        $script:Passed++
-    }
-    else {
-
-        Write-Host "[FAIL] $Name" -ForegroundColor Red
-        Write-Host "Expected ExitCode: $ExitCode"
-        Write-Host "Actual ExitCode  : $LASTEXITCODE"
-
-        $script:Failed++
-    }
-}
-
-function Run-BuildNumber {
-
-    param(
-        [string]$Arguments
-    )
-
-    Write-Host ""
-    Write-Host "EXEC: $Exe $Arguments" -ForegroundColor Yellow
-
-    $args = @()
-
-    if ($Arguments.Length -gt 0) {
-        $args += $Arguments.Split(' ')
-    }
-
-    & $Exe @args
-}
-
-# ------------------------------------------------------------
-# Test 1
-# ------------------------------------------------------------
-
-Remove-TestFile
-
-Run-BuildNumber "-pre"
-
-Assert-Version `
-    "New File PRE" `
-    0 0 1 PRE
-
-# ------------------------------------------------------------
-# Test 2
-# ------------------------------------------------------------
-
-Run-BuildNumber "-pre"
-
-Assert-Version `
-    "PRE -> PRE" `
-    0 0 2 PRE
-
-# ------------------------------------------------------------
-# Test 3
-# ------------------------------------------------------------
-
-Run-BuildNumber "-post"
-
-Assert-Version `
-    "PRE -> POST" `
-    0 0 3 POST
-
-# ------------------------------------------------------------
-# Test 4
-# ------------------------------------------------------------
-
-Run-BuildNumber "-pre"
-
-Assert-Version `
-    "POST -> PRE" `
-    0 0 3 PRE
-
-# ------------------------------------------------------------
-# Test 5
-# ------------------------------------------------------------
-
-Run-BuildNumber "-post"
-
-Assert-Version `
-    "POST after PRE" `
-    0 0 4 POST
-
-# ------------------------------------------------------------
-# Test 6
-# ------------------------------------------------------------
-
-Run-BuildNumber "-post"
-
-Assert-Version `
-    "POST -> POST" `
-    0 0 5 POST
-
-# ------------------------------------------------------------
-# Test 7 Reset PRE
-# ------------------------------------------------------------
-
-Run-BuildNumber "0 -pre"
-
-Assert-Version `
-    "Reset PRE" `
-    0 0 1 PRE
-
-# ------------------------------------------------------------
-# Test 8 Reset POST
-# ------------------------------------------------------------
-
-Run-BuildNumber "0 -post"
-
-Assert-Version `
-    "Reset POST" `
-    0 0 1 POST
-
-# ------------------------------------------------------------
-# Test 9 Build rollover
-# ------------------------------------------------------------
-
-@'
-#define VERSION_FORMAT "_0.00.000"
-#define BUILD_MODE_PRE
-
-#define VER_MAJOR 3
-#define VER_MINOR 1
-#define BUILDNUMBER 999
-'@ | Set-Content $TestFile
-
-Run-BuildNumber "-pre"
-
-Assert-Version `
-    "Build rollover" `
-    3 2 0 PRE
-
-# ------------------------------------------------------------
-# Test 10 Minor rollover
-# ------------------------------------------------------------
-
-@'
-#define VERSION_FORMAT "_0.00.000"
-#define BUILD_MODE_PRE
-
-#define VER_MAJOR 3
-#define VER_MINOR 99
-#define BUILDNUMBER 999
-'@ | Set-Content $TestFile
-
-Run-BuildNumber "-pre"
-
-Assert-Version `
-    "Minor rollover" `
-    4 0 0 PRE
-
-# ------------------------------------------------------------
-# Test 11 Max version
-# ------------------------------------------------------------
-
-@'
-#define VERSION_FORMAT "_0.00.000"
-#define BUILD_MODE_PRE
-
-#define VER_MAJOR 99
-#define VER_MINOR 99
-#define BUILDNUMBER 999
-'@ | Set-Content $TestFile
-
-Run-BuildNumber "-pre"
-
-Assert-ExitCode `
-    "Maximum version reached" `
-    -4
-
-# ------------------------------------------------------------
-# Test 12 Missing mode
-# ------------------------------------------------------------
-
-& $Exe
-
-Assert-ExitCode `
-    "Missing Mode" `
-    -3
-
-# ------------------------------------------------------------
-# Ergebnis
-# ------------------------------------------------------------
-
-Write-Host ""
-Write-Host "==================================" -ForegroundColor Cyan
-Write-Host "PASSED : $Passed" -ForegroundColor Green
-Write-Host "FAILED : $Failed" -ForegroundColor Red
-Write-Host "==================================" -ForegroundColor Cyan
-
-if ($Failed -eq 0) {
-    Write-Host "ALL TESTS PASSED" -ForegroundColor Green
-}
-else {
-    Write-Host "TEST FAILURES DETECTED" -ForegroundColor Red
-}
 # ============================================================================
 # BuildNumber Regression Test
 # ============================================================================
@@ -415,6 +136,67 @@ function Run-BuildNumber {
     & $Exe @args
 }
 
+function Write-TestHeaderToFile {
+
+    param(
+        [string]$FileName,
+        [int]$Major,
+        [int]$Minor,
+        [int]$Build,
+        [string]$Mode = "PRE"
+    )
+
+@"
+#define VERSION_FORMAT "_0.00.000"
+#define BUILD_MODE_$Mode
+#define VER_MAJOR $Major
+#define VER_MINOR $Minor
+#define BUILDNUMBER $Build
+"@ | Set-Content $FileName
+}
+
+function Test-GeneratedFile {
+
+    param(
+        [string]$Name,
+        [string]$FileName,
+        [int]$ExpectedMajor,
+        [int]$ExpectedMinor,
+        [int]$ExpectedBuild
+    )
+
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Host "[FAIL] $Name (ExitCode=$LASTEXITCODE)" -ForegroundColor Red
+        $script:Failed++
+        return
+    }
+
+    if (!(Test-Path $FileName))
+    {
+        Write-Host "[FAIL] $Name (File not found)" -ForegroundColor Red
+        $script:Failed++
+        return
+    }
+
+    $txt = Get-Content $FileName -Raw
+
+    $ok =
+        ($txt -match "#define\s+VER_MAJOR\s+$ExpectedMajor\b") -and
+        ($txt -match "#define\s+VER_MINOR\s+$ExpectedMinor\b") -and
+        ($txt -match "#define\s+BUILDNUMBER\s+$ExpectedBuild\b")
+
+    if ($ok)
+    {
+        Write-Host "[PASS] $Name" -ForegroundColor Green
+        $script:Passed++
+    }
+    else
+    {
+        Write-Host "[FAIL] $Name (Content Mismatch)" -ForegroundColor Red
+        $script:Failed++
+    }
+}
 # ============================================================================
 # Zustandstests
 # ============================================================================
@@ -509,7 +291,7 @@ $StateTests = @(
             Build = 999
             Mode  = "PRE"
         }
-        Args       = "0 -pre"
+        Args       = "-reset -pre"
         Major      = 0
         Minor      = 0
         Build      = 1
@@ -524,7 +306,7 @@ $StateTests = @(
             Build = 999
             Mode  = "POST"
         }
-        Args       = "0 -post"
+        Args       = "-reset -post"
         Major      = 0
         Minor      = 0
         Build      = 1
@@ -591,6 +373,18 @@ $ErrorTests = @(
         Args = "a b c -pre"
         Code = -3
     }
+	
+	@{
+		Name = "Help"
+		Args = "-h"
+		Code = 0
+	}
+	
+	@{
+    Name = "Reset Without Mode"
+    Args = "-reset"
+    Code = -3
+}
 )
 
 # ============================================================================
@@ -636,6 +430,18 @@ foreach ($t in $ErrorTests) {
 }
 
 # ============================================================================
+# Ungültiger Pfad
+# ============================================================================
+
+Remove-Item test.h -ErrorAction SilentlyContinue
+
+& $Exe "X:\this\path\does\not\exist" test.h -pre
+
+Assert-ExitCode `
+    "Invalid Path" `
+    -1
+
+# ============================================================================
 # Max-Version
 # ============================================================================
 
@@ -650,6 +456,69 @@ Run-BuildNumber "-pre"
 Assert-ExitCode `
     "Maximum Version Reached" `
     -4
+	
+# ============================================================================
+# Custom Filename
+# ============================================================================
+
+Remove-Item "custom.h" -ErrorAction SilentlyContinue
+
+Write-TestHeaderToFile `
+    -FileName "custom.h" `
+    -Major 1 `
+    -Minor 2 `
+    -Build 3 `
+    -Mode PRE
+
+& $Exe custom.h -pre
+
+Test-GeneratedFile `
+    -Name "Custom Filename" `
+    -FileName "custom.h" `
+    -ExpectedMajor 1 `
+    -ExpectedMinor 2 `
+    -ExpectedBuild 4
+
+# ============================================================================
+# Path + Filename
+# ============================================================================
+
+$TestDir = ".\TestOutput"
+
+Remove-Item $TestDir -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $TestDir | Out-Null
+
+@"
+#define VERSION_FORMAT "_0.00.000"
+#define BUILD_MODE_PRE
+
+#define VER_MAJOR 5
+#define VER_MINOR 6
+#define BUILDNUMBER 7
+"@ | Set-Content "$TestDir\pathtest.h"
+
+& $Exe $TestDir pathtest.h -pre
+
+Test-GeneratedFile `
+    -Name "Path And Filename" `
+    -FileName "$TestDir\pathtest.h" `
+    -ExpectedMajor 5 `
+    -ExpectedMinor 6 `
+    -ExpectedBuild 8
+
+# ============================================================================
+# Create Missing File
+# ============================================================================
+
+Remove-Item "does_not_exist.h" -ErrorAction SilentlyContinue
+
+& $Exe does_not_exist.h -pre
+Test-GeneratedFile `
+    -Name "Create Missing File" `
+    -FileName "does_not_exist.h" `
+    -ExpectedMajor 0 `
+    -ExpectedMinor 0 `
+    -ExpectedBuild 1
 
 # ============================================================================
 # Zusammenfassung
