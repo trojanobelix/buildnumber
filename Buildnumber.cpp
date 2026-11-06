@@ -11,6 +11,7 @@
 #include <inttypes.h>
 #include <limits.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -106,6 +107,42 @@ Initial Version:
 
 )"}};
 
+bool GetGitDescribe(char* buffer, size_t bufferSize){
+	FILE* pipe = _popen("git describe --tags --long --dirty 2>nul", "r");
+	if (!pipe)
+		return false;
+
+	if (fgets(buffer, (int) bufferSize, pipe) == nullptr)
+	{
+		_pclose(pipe);
+		return false;
+	}
+
+	_pclose(pipe);
+
+	buffer[strcspn(buffer, "\r\n")] = '\0';
+
+	return true;
+}
+
+bool GetGitBranch(char* buffer, size_t bufferSize){
+	FILE* pipe = _popen("git branch --show-current 2>nul", "r");
+	if (!pipe)
+		return false;
+
+	if (fgets(buffer, (int) bufferSize, pipe) == nullptr)
+	{
+		_pclose(pipe);
+		return false;
+	}
+
+	_pclose(pipe);
+
+	buffer[strcspn(buffer, "\r\n")] = '\0';
+
+	return true;
+}
+
 void ToBcdArrayString(uint64_t value, char* buffer, size_t bufferSize){
 	char digits[13];
 
@@ -123,6 +160,41 @@ void ToBcdArrayString(uint64_t value, char* buffer, size_t bufferSize){
 			strcat_s(buffer, bufferSize, ", ");
 		}
 	}
+}
+
+bool ParseSoftwareDis(const char* token, uint64_t* value){
+	if (!token || !value)
+		return false;
+
+	char digits[32];
+	size_t digitCount = 0;
+
+	while (token[digitCount] >= '0' && token[digitCount] <= '9')
+		digitCount++;
+
+	/* A SAP software DIS consists of exactly twelve decimal digits. */
+	if (digitCount != 12 || digitCount >= sizeof(digits))
+		return false;
+
+	const char* suffix = token + digitCount;
+	if (*suffix != '\0' &&
+		strcmp(suffix, "U") != 0 && strcmp(suffix, "UL") != 0 &&
+		strcmp(suffix, "ULL") != 0 && strcmp(suffix, "u") != 0 &&
+		strcmp(suffix, "ul") != 0 && strcmp(suffix, "ull") != 0)
+		return false;
+
+	memcpy(digits, token, digitCount);
+	digits[digitCount] = '\0';
+
+	errno = 0;
+	char* endptr = NULL;
+	uint64_t parsedValue = (uint64_t) strtoull(digits, &endptr, 10);
+
+	if (errno == ERANGE || endptr == digits || *endptr != '\0')
+		return false;
+
+	*value = parsedValue;
+	return true;
 }
 
 void FormatValue(char* buffer, size_t size, unsigned int value,
@@ -390,16 +462,10 @@ int main(int argc, char* argv[]){
 				} else if (!strcmp(token, "SOFTWARE_DIS")) {
 					token = strtok(NULL, " \t\r\n");
 
-					if (token) {
-						char* endptr;
-
-						sap_dis = (uint64_t) strtoull(token, &endptr, 0);
-
-						if (endptr == token) {
-							printf("Invalid SOFTWARE_DIS\n");
-						} else {
-							use_sap_dis = true;
-						}
+					if (ParseSoftwareDis(token, &sap_dis)) {
+						use_sap_dis = true;
+					} else {
+						printf("ERROR: Invalid SOFTWARE_DIS\n");
 					}
 				}
 			}
@@ -414,7 +480,7 @@ int main(int argc, char* argv[]){
 
 	if (!GetFormatParts(versionFormat, majorFmt, sizeof(majorFmt), minorFmt,
 		sizeof(minorFmt), buildFmt, sizeof(buildFmt))) {
-		printf("Invalid VERSION_FORMAT\n");
+		printf("ERROR: Invalid VERSION_FORMAT\n");
 		return ERR_PARSE;
 	}
 
@@ -500,9 +566,14 @@ int main(int argc, char* argv[]){
 	fBuildNumber = fopen(filePath, "w");
 
 	if (fBuildNumber == NULL) {
-		printf("Could not create file %s\n", filePath);
+		printf("ERROR: Could not create file %s\n", filePath);
 		return ERR_FOPEN;
 	}
+
+	char gitDescribe[256] = "";
+	char gitBranch[256] = "";
+	bool haveGitDescribe = GetGitDescribe(gitDescribe, sizeof(gitDescribe));
+	bool haveGitBranch = GetGitBranch(gitBranch, sizeof(gitBranch));
 
 	time_t t = time(NULL);
 	struct tm tm;
@@ -526,7 +597,7 @@ int main(int argc, char* argv[]){
 	FormatValue(majorString, sizeof(majorString), major, majorFmt);
 
 	if (use_sap_dis) {
-		sprintf_s(sapDisStr, sizeof(sapDisStr), "%" PRIu64, sap_dis);
+		sprintf_s(sapDisStr, sizeof(sapDisStr), "%012" PRIu64, sap_dis);
 		ToBcdArrayString(sap_dis, sapDisBcdArray, sizeof(sapDisBcdArray));
 	}
 
@@ -555,17 +626,25 @@ int main(int argc, char* argv[]){
 	fprintf(fBuildNumber, "#ifndef BUILD_NUMBER_H\n");
 	fprintf(fBuildNumber, "#define BUILD_NUMBER_H\n\n");
 	fprintf(fBuildNumber, "#include <stdint.h>\n\n");
-	fprintf(fBuildNumber, "/* Configuration of generated version string */\n");
+
+	fprintf(fBuildNumber, "/* "
+	"------------------------------------------------------"
+		"--------------------------- */\n"
+		"/* ************* Configuration of the generated version string format ************** */\n"
+		"/* "
+		"------------------------------------------------------"
+		"--------------------------- */\n\n");
 	fprintf(fBuildNumber, "#define VERSION_FORMAT \"%s\"\n\n", versionFormat);
 
-	fprintf(fBuildNumber, "/* Customising the current version */\n\n");
+	fprintf(fBuildNumber, "/* "
+						  "------------------------------------------------------"
+						  "--------------------------- */\n"
+						  "/* ********************* Configuration of the current version ********************** */\n"
+						  "/* "
+						  "------------------------------------------------------"
+						  "--------------------------- */\n\n");
 	fprintf(fBuildNumber,
 			"/* %s-build increment. Actual firmware version: %s */\n",
-			mode == MODE_PRE ? "PRE" : "POST",
-			actualVersionString);
-
-	fprintf(fBuildNumber,
-			"#pragma message(\"%s-build increment. Actual firmware version: %s\")\n\n",
 			mode == MODE_PRE ? "PRE" : "POST",
 			actualVersionString);
 
@@ -594,32 +673,40 @@ int main(int argc, char* argv[]){
 						  "------------------------------------------------------"
 						  "--------------------------- */\n");
 	fprintf(fBuildNumber, "#define BUILD_MODE_%s\n\n", mode == MODE_PRE ? "PRE" : "POST");
-	fprintf(fBuildNumber, "#define MAJORMINOR %u%s\t\t\t\t\t\t// MajorMinor version number as Integer\n",
+	fprintf(fBuildNumber, "#define MAJORMINOR %u%s\t\t\t\t\t\t\t\t\t// MajorMinor version number as Integer\n",
 			major, minorString);
-	fprintf(fBuildNumber, "#define MAJOR_STR  \"%s\"\t\t\t\t\t\t// Major version as String\n",
+	fprintf(fBuildNumber, "#define MAJOR_STR  \"%s\"\t\t\t\t\t\t\t\t\t// Major version as String\n",
 			majorString);
-	fprintf(fBuildNumber, "#define MINOR_STR  \"%s\"\t\t\t\t\t\t// Minor version as String\n",
+	fprintf(fBuildNumber, "#define MINOR_STR  \"%s\"\t\t\t\t\t\t\t\t\t// Minor version as String\n",
 			minorString);
-	fprintf(fBuildNumber, "#define MAJORMINOR_STR  \"%s%s\"\t\t\t\t// MajorMinor number as String\n",
+	fprintf(fBuildNumber, "#define MAJORMINOR_STR  \"%s.%s\"\t\t\t\t\t\t\t// MajorMinor number as String\n",
 			majorString, minorString);
-	fprintf(fBuildNumber, "#define BUILDNUMBER_STR \"%s\"\t\t\t\t// Build number as String\n",
+	fprintf(fBuildNumber, "#define BUILDNUMBER_STR \"%s\"\t\t\t\t\t\t\t// Build number as String\n",
 			buildString);
-	fprintf(fBuildNumber, "#define VERSION_STR \"%s\"\t\t\t\t// Version number as String\n\n",
+	fprintf(fBuildNumber, "#define VERSION_STR \"%s\"\t\t\t\t\t\t\t// Version number as String\n",
 			versionString);
-	if (use_sap_dis) {
-		fprintf(fBuildNumber, "#define SOFTWARE_DIS_STR \"%12s\"\t\t// SAP software DIS as String\n",
-			sapDisStr);
-		fprintf(fBuildNumber, "#define SOFTWARE_DIS_BCD  {%s}\t// SAP software DIS as BCD Array\n\n",
-			sapDisBcdArray);
+
+	if (haveGitDescribe){
+		fprintf(fBuildNumber, "#define GIT_DESCRIBE_STR \"%s\"\t// GIT describe as String\n", gitDescribe);
+		fprintf(fBuildNumber, "#define GIT_BRANCH_STR \"%s\"\t\t\t// GIT branch as String\n\n", gitBranch);
 	}
-	fprintf(fBuildNumber, "#define BUILDDATE_STR \"%d-%02d-%02d %02d:%02d:%02d\"\t// Creation Date as String\n",
+
+	if (use_sap_dis) {
+		fprintf(fBuildNumber, "#define SOFTWARE_DIS_STR \"%s\"\t\t\t\t\t// SAP software DIS as String\n", sapDisStr);
+		fprintf(fBuildNumber, "#define SOFTWARE_DIS_BCD  {%s}\t// SAP software DIS as BCD Array\n\n", sapDisBcdArray);
+	}
+	fprintf(fBuildNumber, "#define BUILDDATE_STR \"%d-%02d-%02d %02d:%02d:%02d\"\t\t\t\t// Creation Date as String\n",
 			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 	fprintf(fBuildNumber, "\n#endif\n");
 
 	fclose(fBuildNumber);
-
 	printf("File %s updated.\n", filePath);
-	printf("New build version: %s\n\n", versionString);
+
+	if (haveGitDescribe) {
+		printf("New build version: from git branch %s - %s \n\n", versionString, gitDescribe);
+	} else {
+		printf("New build version: %s \n\n", versionString);
+	}
 	printf("%s-build increment. Actual firmware version: %s\n", mode == MODE_PRE ? "PRE" : "POST",
 		actualVersionString);
 
